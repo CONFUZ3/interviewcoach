@@ -34,8 +34,8 @@
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/realtime-mock-interview-coach.git
-   cd realtime-mock-interview-coach
+   git clone https://github.com/CONFUZ3/interviewcoach.git
+   cd interviewcoach
    ```
 
 2. **Install dependencies**
