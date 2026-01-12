@@ -215,7 +215,7 @@ This project is open source and available under the [MIT License](LICENSE).
 
 If you encounter any issues or have questions:
 
-1. Check the [Issues](https://github.com/yourusername/realtime-mock-interview-coach/issues) page
+1. Check the [Issues](https://github.com/CONFUZ3/interviewcoach/issues) page
 2. Create a new issue with details about your problem
 3. Include browser version and error messages if applicable
 
