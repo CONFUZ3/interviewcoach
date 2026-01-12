@@ -566,14 +566,29 @@ const App: React.FC = () => {
       setIsConnecting(false);
       setShowSetupForm(true);
       
+      const errorMessage = err?.message || err?.toString() || '';
+      
       if (err.name === 'NotAllowedError') {
         setError('Microphone access denied. Please allow microphone access and try again.');
       } else if (err.name === 'NotFoundError') {
         setError('No microphone found. Please connect a microphone and try again.');
-      } else if (err.message?.includes('API key') || err.message?.includes('401') || err.message?.includes('403')) {
-        setError('Invalid API key. Please check your Gemini API key and try again.');
+      } else if (
+        errorMessage.includes('API_KEY_INVALID') || 
+        errorMessage.includes('API key not valid') ||
+        errorMessage.includes('invalid api key') ||
+        errorMessage.includes('401') || 
+        errorMessage.includes('403') ||
+        errorMessage.includes('PERMISSION_DENIED') ||
+        errorMessage.includes('UNAUTHENTICATED')
+      ) {
+        setError('Invalid API key. Please check that your Gemini API key is correct and has not expired. You can get a new key from Google AI Studio.');
+      } else if (errorMessage.includes('quota') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
+        setError('API quota exceeded. Your API key has reached its usage limit. Please check your Google AI Studio account or try again later.');
+      } else if (errorMessage.includes('not found') || errorMessage.includes('NOT_FOUND')) {
+        setError('Model not available. The AI model may be temporarily unavailable. Please try again in a few moments.');
       } else {
-        setError(`Failed to start: ${err.message || 'Unknown error'}`);
+        // Show the actual error message to help users understand what went wrong
+        setError(`Failed to start interview: ${errorMessage || 'Unknown error occurred. Please check your API key and try again.'}`);
       }
     }
   };
