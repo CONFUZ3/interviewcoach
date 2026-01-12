@@ -8,8 +8,8 @@ import InterviewerAvatar from './components/InterviewerAvatar';
 // Use the Gemini native audio model
 const MODEL_NAME = 'gemini-2.5-flash-native-audio-preview-12-2025';
 
-// Function to generate system instruction based on whether JD is provided
-const getSystemInstruction = (jobDescription?: string) => {
+// Function to generate system instruction based on whether JD and Resume are provided
+const getSystemInstruction = (jobDescription?: string, resumeContent?: string) => {
   const baseInstruction = `You are Alex, a friendly and supportive AI interview coach conducting mock interviews.
 
 LANGUAGE:
@@ -19,19 +19,37 @@ LANGUAGE:
 YOUR ROLE:
 You are a Professional Interviewer conducting realistic mock interviews. Focus 100% on being an excellent interviewer - do NOT provide any feedback or coaching tips during the interview. You will have the opportunity to provide comprehensive feedback at the end.`;
 
+  let contextSection = '';
+  
+  if (resumeContent && resumeContent.trim()) {
+    contextSection += `
+
+---
+CANDIDATE'S RESUME/BACKGROUND:
+${resumeContent.trim()}
+---
+
+Use the candidate's resume to:
+- Reference their specific experiences and projects when asking follow-up questions
+- Ask about gaps or transitions in their career
+- Probe deeper into their claimed skills and accomplishments
+- Personalize behavioral questions to their actual experience`;
+  }
+
   const openingWithJD = `
 INTERVIEW FLOW:
 1. Opening (warm and welcoming):
    - Introduce yourself briefly: "Hi, I'm Alex, your interview coach today!"
-   - Acknowledge that you have the job description for the role they're preparing for
+   - ${resumeContent ? "Acknowledge that you've reviewed their resume and the job description" : "Acknowledge that you have the job description for the role they're preparing for"}
    - Briefly confirm the role and ask about their experience level to calibrate question difficulty
 
-2. Question Strategy (IMPORTANT - Use the Job Description):
+2. Question Strategy (IMPORTANT - Use the Job Description${resumeContent ? ' and Resume' : ''}):
    - Ask ONE question at a time, then wait for the full response
    - Tailor ALL questions to the specific job description provided
+   ${resumeContent ? '- Reference specific experiences from their resume when relevant' : ''}
    - Focus on skills, requirements, and responsibilities mentioned in the JD
    - Mix question types based on the JD requirements:
-     • Behavioral: "Tell me about a time when..." (related to JD requirements)
+     • Behavioral: "Tell me about a time when..." (related to JD requirements${resumeContent ? ', referencing their resume' : ''})
      • Situational: "How would you handle..." (scenarios from the role)
      • Technical: Questions about specific skills/technologies mentioned in the JD
      • Motivational: "Why are you interested in this specific role?"
@@ -43,11 +61,12 @@ INTERVIEW FLOW:
 INTERVIEW FLOW:
 1. Opening (warm and welcoming):
    - Introduce yourself briefly: "Hi, I'm Alex, your interview coach today!"
-   - Ask what role they're preparing for
+   ${resumeContent ? "- Acknowledge that you've reviewed their resume" : '- Ask what role they\'re preparing for'}
    - Ask about their experience level to calibrate question difficulty
 
 2. Question Strategy:
    - Ask ONE question at a time, then wait for the full response
+   ${resumeContent ? '- Reference specific experiences from their resume when asking questions' : ''}
    - Mix question types based on role:
      • Behavioral: "Tell me about a time when..."
      • Situational: "How would you handle..."
@@ -80,7 +99,7 @@ When candidate says "end interview" or similar:
 3. Thank them briefly for practicing with you`;
 
   if (jobDescription && jobDescription.trim()) {
-    return `${baseInstruction}${openingWithJD}${commonInstructions}
+    return `${baseInstruction}${contextSection}${openingWithJD}${commonInstructions}
 
 ---
 JOB DESCRIPTION FOR THIS INTERVIEW:
@@ -90,11 +109,11 @@ ${jobDescription.trim()}
 Use the above job description to guide your questions. Extract key requirements, skills, and responsibilities and ask questions that assess the candidate's fit for this specific role.`;
   }
 
-  return `${baseInstruction}${openingWithoutJD}${commonInstructions}`;
+  return `${baseInstruction}${contextSection}${openingWithoutJD}${commonInstructions}`;
 };
 
-// Function to generate feedback prompt based on whether JD is provided
-const getFeedbackPrompt = (jobDescription?: string) => {
+// Function to generate feedback prompt based on whether JD and Resume are provided
+const getFeedbackPrompt = (jobDescription?: string, resumeContent?: string) => {
   const basePrompt = `You are an expert interview coach analyzing a mock interview. You have access to both the conversation transcript AND video frames captured during the interview. Provide comprehensive, actionable feedback based on the candidate's verbal AND non-verbal performance.
 
 Analyze the interview and provide detailed feedback in this exact format:
@@ -130,7 +149,19 @@ Analyze the interview and provide detailed feedback in this exact format:
 - **Relevance**: [Did answers address the questions asked?]
 - **Depth**: [Surface-level or thoughtful, in-depth responses?]`;
 
-  const jdAlignmentSection = `
+  let additionalSections = '';
+
+  if (resumeContent && resumeContent.trim()) {
+    additionalSections += `
+
+## Resume Alignment
+- **Consistency**: [Did their verbal answers match what's on their resume?]
+- **Elaboration**: [Did they effectively expand on resume bullet points with specific details?]
+- **Authenticity**: [Did they seem genuinely familiar with the experiences they claimed?]`;
+  }
+
+  if (jobDescription && jobDescription.trim()) {
+    additionalSections += `
 
 ## Job Description Alignment
 - **Skills Match**: [How well did the candidate demonstrate the required skills mentioned in the JD?]
@@ -138,6 +169,7 @@ Analyze the interview and provide detailed feedback in this exact format:
 - **Technical Fit**: [Assessment of technical knowledge relevant to the specific role]
 - **Cultural Indicators**: [Did they show understanding of what the role/company might need?]
 - **Gaps Identified**: [Any key JD requirements that weren't addressed or demonstrated]`;
+  }
 
   const nextSteps = `
 
@@ -149,21 +181,39 @@ Analyze the interview and provide detailed feedback in this exact format:
 ---
 Be honest but encouraging. If something was genuinely good, say so. If something needs work, be specific about what and how to fix it. Pay special attention to the video frames to assess body language and presence.`;
 
+  let contextInfo = '';
+  if (resumeContent && resumeContent.trim()) {
+    contextInfo += `
+
+---
+CANDIDATE'S RESUME:
+${resumeContent.trim()}
+---`;
+  }
+
   if (jobDescription && jobDescription.trim()) {
-    return `${basePrompt}${jdAlignmentSection}${nextSteps}
+    contextInfo += `
 
 ---
 JOB DESCRIPTION USED FOR THIS INTERVIEW:
 ${jobDescription.trim()}
 ---
 
-Use the above job description to evaluate how well the candidate's responses aligned with the specific role requirements. Assess whether they demonstrated the skills, experience, and qualities needed for this position.`;
+Use the above job description to evaluate how well the candidate's responses aligned with the specific role requirements.`;
   }
 
-  return `${basePrompt}${nextSteps}`;
+  return `${basePrompt}${additionalSections}${nextSteps}${contextInfo}`;
 };
 
 const App: React.FC = () => {
+  // Setup form state
+  const [showSetupForm, setShowSetupForm] = useState(true);
+  const [apiKey, setApiKey] = useState('');
+  const [resumeContent, setResumeContent] = useState('');
+  const [jobDescription, setJobDescription] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  
+  // Interview state
   const [isActive, setIsActive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -173,7 +223,6 @@ const App: React.FC = () => {
   const [realtimeText, setRealtimeText] = useState<{ user: string; model: string }>({ user: '', model: '' });
   const [endFeedback, setEndFeedback] = useState<string | null>(null);
   const [isGeneratingFeedback, setIsGeneratingFeedback] = useState(false);
-  const [jobDescription, setJobDescription] = useState<string>('');
 
   // Refs
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -199,6 +248,9 @@ const App: React.FC = () => {
   const lastFrameCaptureTimeRef = useRef<number>(0);
   const FRAME_CAPTURE_INTERVAL = 5000; // Capture a frame every 5 seconds for feedback
   const MAX_FRAMES_FOR_FEEDBACK = 12; // Keep max 12 frames (1 minute of interview at 5s intervals)
+
+  // Store interview context for feedback
+  const interviewContextRef = useRef<{ jd: string; resume: string; apiKey: string }>({ jd: '', resume: '', apiKey: '' });
 
   const cleanup = useCallback(() => {
     // Mark session as closed first to stop audio processing
@@ -234,9 +286,9 @@ const App: React.FC = () => {
   }, []);
 
   // Generate comprehensive feedback at the end of the interview
-  const generateFeedback = useCallback(async (transcript: TranscriptionEntry[], videoFrames: string[], jd?: string) => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey || transcript.length === 0) return;
+  const generateFeedback = useCallback(async (transcript: TranscriptionEntry[], videoFrames: string[], jd?: string, resume?: string, key?: string) => {
+    const feedbackApiKey = key || interviewContextRef.current.apiKey;
+    if (!feedbackApiKey || transcript.length === 0) return;
 
     setIsGeneratingFeedback(true);
     
@@ -246,13 +298,13 @@ const App: React.FC = () => {
         .map(t => `${t.role === 'user' ? 'Candidate' : 'Interviewer'}: ${t.text}`)
         .join('\n\n');
 
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = new GoogleGenAI({ apiKey: feedbackApiKey });
       
       // Build content parts with text and video frames
       const contentParts: Array<string | { inlineData: { mimeType: string; data: string } }> = [];
       
-      // Add the prompt and transcript as text (using JD-aware feedback prompt)
-      contentParts.push(`${getFeedbackPrompt(jd)}\n\n---\n\nINTERVIEW TRANSCRIPT:\n\n${formattedTranscript}\n\n---\n\nVIDEO FRAMES FROM THE INTERVIEW (${videoFrames.length} frames captured at regular intervals):\n`);
+      // Add the prompt and transcript as text (using JD and Resume-aware feedback prompt)
+      contentParts.push(`${getFeedbackPrompt(jd, resume)}\n\n---\n\nINTERVIEW TRANSCRIPT:\n\n${formattedTranscript}\n\n---\n\nVIDEO FRAMES FROM THE INTERVIEW (${videoFrames.length} frames captured at regular intervals):\n`);
       
       // Add video frames as inline data
       if (videoFrames.length > 0) {
@@ -267,7 +319,7 @@ const App: React.FC = () => {
       }
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.5-flash-preview-05-20',
         contents: contentParts,
       });
 
@@ -275,7 +327,7 @@ const App: React.FC = () => {
       setEndFeedback(feedbackText);
     } catch (err) {
       console.error('Error generating feedback:', err);
-      setEndFeedback('Failed to generate feedback. Please check your connection and try again.');
+      setEndFeedback('Failed to generate feedback. Please check your API key and connection, then try again.');
     } finally {
       setIsGeneratingFeedback(false);
     }
@@ -284,10 +336,10 @@ const App: React.FC = () => {
   const stopSession = useCallback(() => {
     console.log('Stopping session...');
     
-    // Capture current transcriptions, video frames, and JD before cleanup
+    // Capture current transcriptions, video frames, and context before cleanup
     const currentTranscriptions = [...transcriptions];
     const currentFrames = [...capturedFramesRef.current];
-    const currentJD = jobDescription;
+    const { jd, resume, apiKey: storedApiKey } = interviewContextRef.current;
     
     if (sessionRef.current) {
       try {
@@ -308,11 +360,11 @@ const App: React.FC = () => {
     capturedFramesRef.current = [];
     lastFrameCaptureTimeRef.current = 0;
     
-    // Generate feedback if we have transcript data (pass JD for JD-aware feedback)
+    // Generate feedback if we have transcript data (pass JD and Resume for context-aware feedback)
     if (currentTranscriptions.length > 0) {
-      generateFeedback(currentTranscriptions, currentFrames, currentJD);
+      generateFeedback(currentTranscriptions, currentFrames, jd, resume, storedApiKey);
     }
-  }, [cleanup, transcriptions, jobDescription, generateFeedback]);
+  }, [cleanup, transcriptions, generateFeedback]);
 
 
   const handleMessage = useCallback(async (msg: any) => {
@@ -402,16 +454,22 @@ const App: React.FC = () => {
   }, []);
 
   const startSession = async () => {
-    const apiKey = process.env.API_KEY;
-    
-    if (!apiKey) {
-      setError('API key not configured. Please add GEMINI_API_KEY to your .env.local file.');
+    if (!apiKey.trim()) {
+      setError('Please enter your Gemini API key to start the interview.');
       return;
     }
+
+    // Store interview context for feedback generation
+    interviewContextRef.current = {
+      jd: jobDescription,
+      resume: resumeContent,
+      apiKey: apiKey.trim()
+    };
 
     try {
       setError(null);
       setIsConnecting(true);
+      setShowSetupForm(false);
       setStatusMessage('Requesting microphone access...');
       
       // Request microphone first
@@ -433,7 +491,7 @@ const App: React.FC = () => {
       
       setStatusMessage('Connecting to Gemini...');
       
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
       
       // Connect to live session
       const session = await ai.live.connect({
@@ -443,7 +501,7 @@ const App: React.FC = () => {
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
           },
-          systemInstruction: getSystemInstruction(jobDescription),
+          systemInstruction: getSystemInstruction(jobDescription, resumeContent),
           // Enable transcription for both input and output
           inputAudioTranscription: {},
           outputAudioTranscription: {},
@@ -506,13 +564,14 @@ const App: React.FC = () => {
       console.error('Failed to start session:', err);
       cleanup();
       setIsConnecting(false);
+      setShowSetupForm(true);
       
       if (err.name === 'NotAllowedError') {
         setError('Microphone access denied. Please allow microphone access and try again.');
       } else if (err.name === 'NotFoundError') {
         setError('No microphone found. Please connect a microphone and try again.');
-      } else if (err.message?.includes('API key')) {
-        setError('Invalid API key. Please check your GEMINI_API_KEY in .env.local');
+      } else if (err.message?.includes('API key') || err.message?.includes('401') || err.message?.includes('403')) {
+        setError('Invalid API key. Please check your Gemini API key and try again.');
       } else {
         setError(`Failed to start: ${err.message || 'Unknown error'}`);
       }
@@ -566,8 +625,159 @@ const App: React.FC = () => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [transcriptions, realtimeText]);
 
+  const handleNewInterview = () => {
+    setEndFeedback(null);
+    setTranscriptions([]);
+    setShowSetupForm(true);
+  };
+
+  // Setup Form Component
+  const SetupForm = () => (
+    <div className="fixed inset-0 bg-slate-950 z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div className="w-full max-w-2xl">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-900/30">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-white">
+              <path d="M8.25 4.5a3.75 3.75 0 1 1 7.5 0v8.25a3.75 3.75 0 1 1-7.5 0V4.5Z" />
+              <path d="M6 10.5a.75.75 0 0 1 .75.75v1.5a5.25 5.25 0 1 0 10.5 0v-1.5a.75.75 0 0 1 1.5 0v1.5a6.751 6.751 0 0 1-6 6.709v2.291h3a.75.75 0 0 1 0 1.5h-7.5a.75.75 0 0 1 0-1.5h3v-2.291a6.751 6.751 0 0 1-6-6.709v-1.5A.75.75 0 0 1 6 10.5Z" />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-bold text-white mb-2">AI Mock Interview Coach</h1>
+          <p className="text-slate-400">Practice interviews with AI-powered feedback on your responses and body language</p>
+        </div>
+
+        {/* Form */}
+        <div className="glass rounded-3xl p-6 md:p-8 space-y-6">
+          {/* API Key Input */}
+          <div>
+            <label htmlFor="apiKey" className="flex items-center gap-2 text-sm font-semibold text-slate-200 mb-2">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-amber-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z" />
+              </svg>
+              Gemini API Key <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <input
+                id="apiKey"
+                type={showApiKey ? 'text' : 'password'}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Enter your Gemini API key"
+                className="w-full bg-slate-900/70 border border-slate-700 rounded-xl px-4 py-3 pr-12 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+              >
+                {showApiKey ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Get your free API key from{' '}
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">
+                Google AI Studio
+              </a>
+              . Your key is only used in your browser and never stored on any server.
+            </p>
+          </div>
+
+          {/* Resume Input */}
+          <div>
+            <label htmlFor="resume" className="flex items-center gap-2 text-sm font-semibold text-slate-200 mb-2">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-emerald-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+              </svg>
+              Your Resume / Background
+              <span className="text-xs font-normal text-slate-500">(Optional)</span>
+            </label>
+            <textarea
+              id="resume"
+              value={resumeContent}
+              onChange={(e) => setResumeContent(e.target.value)}
+              placeholder="Paste your resume content here. The AI will use this to ask personalized questions about your experience, skills, and projects..."
+              className="w-full h-40 bg-slate-900/70 border border-slate-700 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent custom-scrollbar transition-all"
+            />
+          </div>
+
+          {/* Job Description Input */}
+          <div>
+            <label htmlFor="jobDescription" className="flex items-center gap-2 text-sm font-semibold text-slate-200 mb-2">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-blue-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 0 0 .75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 0 0-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0 1 12 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 0 1-.673-.38m0 0A2.18 2.18 0 0 1 3 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 0 1 3.413-.387m7.5 0V5.25A2.25 2.25 0 0 0 13.5 3h-3a2.25 2.25 0 0 0-2.25 2.25v.894m7.5 0a48.667 48.667 0 0 0-7.5 0M12 12.75h.008v.008H12v-.008Z" />
+              </svg>
+              Job Description
+              <span className="text-xs font-normal text-slate-500">(Optional)</span>
+            </label>
+            <textarea
+              id="jobDescription"
+              value={jobDescription}
+              onChange={(e) => setJobDescription(e.target.value)}
+              placeholder="Paste the job description here. The AI will tailor interview questions to match the specific role requirements..."
+              className="w-full h-40 bg-slate-900/70 border border-slate-700 rounded-xl px-4 py-3 text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent custom-scrollbar transition-all"
+            />
+          </div>
+
+          {/* Info Box */}
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+            <div className="flex gap-3">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
+              </svg>
+              <div className="text-sm text-slate-300">
+                <p className="font-medium text-blue-300 mb-1">How it works:</p>
+                <ul className="space-y-1 text-slate-400">
+                  <li>• Allow camera & microphone access when prompted</li>
+                  <li>• Alex (AI) will conduct a realistic mock interview</li>
+                  <li>• Click "End Session" when finished for detailed feedback</li>
+                  <li>• Get analysis on communication, body language, and content</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Start Button */}
+          <button
+            onClick={startSession}
+            disabled={!apiKey.trim()}
+            className={`w-full py-4 rounded-xl font-semibold text-lg flex items-center justify-center gap-3 transition-all ${
+              apiKey.trim()
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-900/30 active:scale-[0.98]'
+                : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+            </svg>
+            Start Interview
+          </button>
+        </div>
+
+        {/* Footer */}
+        <p className="text-center text-xs text-slate-600 mt-6">
+          Your data stays in your browser. We don't store your API key, resume, or interview content.
+        </p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-950">
+      {/* Setup Form */}
+      {showSetupForm && !isConnecting && !isActive && <SetupForm />}
+
       {/* Header */}
       <header className="h-16 flex items-center justify-between px-4 md:px-6 glass border-b border-slate-800 z-10">
         <div className="flex items-center space-x-3">
@@ -577,8 +787,8 @@ const App: React.FC = () => {
             </svg>
           </div>
           <div>
-            <h1 className="text-lg font-bold text-slate-100 leading-tight">Realtime Mock Interview Coach</h1>
-            <p className="text-[10px] text-slate-400 uppercase tracking-widest">AI-Powered Mock Interviews</p>
+            <h1 className="text-lg font-bold text-slate-100 leading-tight">AI Mock Interview Coach</h1>
+            <p className="text-[10px] text-slate-400 uppercase tracking-widest">Powered by Gemini</p>
           </div>
         </div>
         
@@ -586,18 +796,7 @@ const App: React.FC = () => {
           {statusMessage && (
             <span className="text-sm text-slate-400 animate-pulse">{statusMessage}</span>
           )}
-          {!isActive && !isConnecting ? (
-            <button
-              onClick={startSession}
-              className="px-4 md:px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-full shadow-lg transition-all active:scale-95 flex items-center space-x-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-950"
-              aria-label="Start interview session"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
-              </svg>
-              <span>Start Interview</span>
-            </button>
-          ) : isConnecting ? (
+          {isConnecting ? (
             <button
               disabled
               className="px-6 py-2 bg-slate-700 text-slate-400 font-semibold rounded-full flex items-center space-x-2 cursor-not-allowed"
@@ -608,7 +807,7 @@ const App: React.FC = () => {
               </svg>
               <span>Connecting...</span>
             </button>
-          ) : (
+          ) : isActive ? (
             <button
               onClick={stopSession}
               className="px-4 md:px-6 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/50 font-semibold rounded-full transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-slate-950"
@@ -616,7 +815,7 @@ const App: React.FC = () => {
             >
               End Session
             </button>
-          )}
+          ) : null}
         </div>
       </header>
 
@@ -704,10 +903,7 @@ const App: React.FC = () => {
                     <span>Interview Feedback</span>
                   </h2>
                   <button
-                    onClick={() => {
-                      setEndFeedback(null);
-                      setTranscriptions([]);
-                    }}
+                    onClick={handleNewInterview}
                     className="text-xs text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900 rounded px-2 py-1"
                     aria-label="Start new interview"
                   >
@@ -778,57 +974,36 @@ const App: React.FC = () => {
                   </svg>
                   <span>Click "End Session" when finished</span>
                 </div>
-              </div>
-            ) : (
-              // Waiting to start - JD Input and Info
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-blue-400">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                    </svg>
-                    Job Description (Optional)
-                  </h3>
-                  {jobDescription && (
-                    <button
-                      onClick={() => setJobDescription('')}
-                      className="text-xs text-slate-400 hover:text-red-400 transition-colors focus:outline-none"
-                      aria-label="Clear job description"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-                <textarea
-                  value={jobDescription}
-                  onChange={(e) => setJobDescription(e.target.value)}
-                  placeholder="Paste a job description here to get tailored interview questions specific to the role..."
-                  className="flex-1 min-h-[120px] w-full bg-slate-900/50 border border-slate-700 rounded-xl p-3 text-sm text-slate-200 placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent custom-scrollbar"
-                  aria-label="Job description input"
-                />
-                <div className="mt-3 pt-3 border-t border-slate-800">
-                  {jobDescription ? (
-                    <div className="flex items-start gap-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0">
+                {/* Show context indicators */}
+                <div className="mt-6 space-y-2 text-xs">
+                  {interviewContextRef.current.resume && (
+                    <div className="flex items-center gap-2 text-emerald-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                       </svg>
-                      <p className="text-xs text-emerald-400">JD loaded! Questions will be tailored to this role.</p>
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      <p className="text-xs text-slate-500 mb-2">Or start without a JD for general interview practice</p>
+                      <span>Resume loaded</span>
                     </div>
                   )}
-                  <div className="mt-3 text-xs text-slate-500">
-                    <p className="font-medium text-slate-400 mb-1">Feedback includes:</p>
-                    <ul className="space-y-0.5">
-                      <li>• Communication & Clarity</li>
-                      <li>• Body Language & Presence</li>
-                      <li>• Content Quality & Structure</li>
-                      {jobDescription && <li>• JD Alignment Assessment</li>}
-                    </ul>
-                  </div>
+                  {interviewContextRef.current.jd && (
+                    <div className="flex items-center gap-2 text-blue-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                      </svg>
+                      <span>Job description loaded</span>
+                    </div>
+                  )}
                 </div>
+              </div>
+            ) : (
+              // Waiting state (shown when not in setup form but also not active)
+              <div className="flex-1 flex flex-col items-center justify-center text-center">
+                <div className="w-20 h-20 rounded-full bg-slate-800 flex items-center justify-center mb-6">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-slate-500">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-bold text-slate-100 mb-2">Ready to Start</h3>
+                <p className="text-sm text-slate-400">Complete the setup form to begin your mock interview.</p>
               </div>
             )}
           </div>
@@ -853,20 +1028,6 @@ const App: React.FC = () => {
             >
               Dismiss
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Splash Screen */}
-      {!isActive && !isConnecting && transcriptions.length === 0 && !endFeedback && (
-        <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-0 opacity-20">
-          <div className="text-center">
-            <div className="w-64 h-64 bg-blue-600/20 rounded-full blur-[100px] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={0.5} stroke="currentColor" className="w-48 h-48 text-slate-700 mx-auto mb-8 animate-pulse">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
-            </svg>
-            <h2 className="text-4xl font-bold text-slate-800">Ready to Interview?</h2>
-            <p className="text-slate-700 max-w-sm mx-auto mt-4">Connect your mic and camera to practice with an AI interviewer and receive detailed feedback.</p>
           </div>
         </div>
       )}
